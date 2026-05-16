@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Start | AI Grant Assistant{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-copy">
+        <p class="eyebrow">AI Grant Assistant</p>
+        <h1>Win better grants without drowning in search and paperwork.</h1>
+        <p class="hero-line">Describe your project. We find grants, score fit, and draft your application.</p>
+        <a class="btn btn-primary" href="{{ url_for('setup') }}">Start</a>
+    </div>
+    <div class="hero-visual" aria-hidden="true">
+        <div class="visual-chip">Live Search</div>
+        <div class="visual-chip">Fit Score</div>
+        <div class="visual-chip">Draft Ready</div>
+    </div>
+</section>
+{% endblock %}
