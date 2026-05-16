@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Results | AI Grant Assistant{% endblock %}
+
+{% block content %}
+<section class="page-head">
+    <p class="eyebrow">Results</p>
+    <h1>Ranked opportunities and proposal drafts.</h1>
+    <p>Run the agents, review top grants, generate drafts, then export a PDF packet.</p>
+</section>
+
+<section class="run-panel">
+    <div class="run-top">
+        <button class="btn btn-primary" type="button" data-run-agents>Run agents</button>
+        <button class="btn btn-secondary" type="button" data-placeholder>Download PDF</button>
+    </div>
+    <div class="status-wrap" data-status-wrap>
+        <div class="status-track">
+            <span data-status-fill></span>
+        </div>
+        <div class="status-steps">
+            <span data-step>Researching live grants</span>
+            <span data-step>Scoring eligibility fit</span>
+            <span data-step>Ranking shortlist</span>
+            <span data-step>Drafting proposal pack</span>
+        </div>
+        <p class="status-text" data-status-text>Ready to run.</p>
+    </div>
+</section>
+
+<section class="result-metrics" data-result-metrics hidden>
+    {% for metric in result_metrics %}
+        <article class="metric">
+            <span>{{ metric.label }}</span>
+            <strong>{{ metric.value }}</strong>
+        </article>
+    {% endfor %}
+</section>
+
+<section class="grants" data-grants hidden>
+    {% for grant in grants %}
+        <article class="grant-card">
+            <div class="grant-row">
+                <strong>{{ grant.name }}</strong>
+                <span class="pill">{{ grant.fit }}% fit</span>
+            </div>
+            <p>{{ grant.sponsor }}</p>
+            <div class="grant-row">
+                <small>{{ grant.amount }} | Deadline {{ grant.deadline }}</small>
+                <small>{{ grant.type }}</small>
+            </div>
+            <div class="fit-meter">
+                <span style="width: {{ grant.fit }}%"></span>
+            </div>
+            <button class="btn btn-small" type="button" data-placeholder>Generate Draft</button>
+        </article>
+    {% endfor %}
+</section>
+{% endblock %}

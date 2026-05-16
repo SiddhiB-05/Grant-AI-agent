@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Setup | AI Grant Assistant{% endblock %}
+
+{% block content %}
+<section class="page-head">
+    <p class="eyebrow">Setup</p>
+    <h1>Tell us about your project.</h1>
+    <p>Fill this once. The backend can plug in later.</p>
+</section>
+
+<section class="setup-layout">
+    <form class="setup-form" action="{{ url_for('results') }}" method="get">
+        <label>
+            Project domain
+            <input type="text" placeholder="Water access, climate, health, education">
+        </label>
+        <label>
+            Budget
+            <input type="text" placeholder="INR 5 lakh to INR 25 lakh">
+        </label>
+        <label>
+            Location
+            <input type="text" placeholder="Rajasthan, India">
+        </label>
+        <label>
+            Goals
+            <textarea rows="6" placeholder="Who you serve, what problem you solve, and what impact you expect."></textarea>
+        </label>
+        <button class="btn btn-primary" type="submit">Find Grants</button>
+    </form>
+</section>
+{% endblock %}
