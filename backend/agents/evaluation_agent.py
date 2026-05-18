@@ -1,28 +1,52 @@
 from sklearn.metrics.pairwise import cosine_similarity
-
 from utils.embeddings import get_embedding
 
 
-def evaluate_grants(grants):
+def evaluate_grants(grants, user_query):
+    """
+    Score each grant by semantic similarity to user query.
+    Uses name + description for embedding.
+    Normalizes scores so best = 100%, worst = 0%.
+    Returns grants sorted highest first.
+    """
 
-    user_query = "women healthcare NGO"
+    if not grants:
+        return []
 
-    query_embedding = get_embedding(user_query)
+    try:
+        query_embedding = get_embedding(user_query)
+    except Exception as e:
+        print(f"[evaluation_agent] Failed to embed query: {e}")
+        return grants
+
+    raw_scores = []
 
     for grant in grants:
+        try:
+            text = f"{grant.get('name', '')}. {grant.get('description', '')}".strip()
+            if not text:
+                grant["_raw"] = 0.0
+                raw_scores.append(0.0)
+                continue
 
-        grant_embedding = get_embedding(
-            grant["name"]
-        )
+            emb = get_embedding(text)
+            sim = float(cosine_similarity([query_embedding], [emb])[0][0])
+            grant["_raw"] = sim
+            raw_scores.append(sim)
 
-        similarity = cosine_similarity(
-            [query_embedding],
-            [grant_embedding]
-        )[0][0]
+        except Exception as e:
+            print(f"[evaluation_agent] Error scoring '{grant.get('name')}': {e}")
+            grant["_raw"] = 0.0
+            raw_scores.append(0.0)
 
-        grant["score"] = round(
-            similarity * 100,
-            2
-        )
+    # Normalize so best match = 100%, worst = 0%
+    lo, hi = min(raw_scores), max(raw_scores)
+    span = hi - lo
 
+    for grant in grants:
+        raw = grant.pop("_raw", 0.0)
+        normalized = ((raw - lo) / span) if span > 0 else 1.0
+        grant["score"] = round(normalized * 100, 1)
+
+    grants.sort(key=lambda g: g["score"], reverse=True)
     return grants

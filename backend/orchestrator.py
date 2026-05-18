@@ -3,15 +3,22 @@ from agents.evaluation_agent import evaluate_grants
 from agents.drafting_agent import generate_proposal
 
 
-def run_pipeline():
+def run_pipeline(user_query):
+    print(f"[orchestrator] Starting pipeline for query: {user_query[:80]}")
 
-    grants = search_grants("NGO")
+    print("[orchestrator] Step 1: Searching for grants...")
+    grants = search_grants(user_query)
+    print(f"[orchestrator] Found {len(grants)} raw results.")
 
-    ranked_grants = evaluate_grants(grants)
+    print("[orchestrator] Step 2: Scoring and ranking grants...")
+    ranked_grants = evaluate_grants(grants, user_query)
+    print(f"[orchestrator] Top score: {ranked_grants[0]['score'] if ranked_grants else 'N/A'}")
 
-    proposal = generate_proposal()
+    print("[orchestrator] Step 3: Generating proposal draft...")
+    proposal = generate_proposal(user_query, top_grants=ranked_grants)
 
     return {
         "grants": ranked_grants,
-        "proposal": proposal
+        "proposal": proposal,
+        "query": user_query
     }

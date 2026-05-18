@@ -6,54 +6,171 @@
 <section class="page-head">
     <p class="eyebrow">Results</p>
     <h1>Ranked opportunities and proposal drafts.</h1>
-    <p>Run the agents, review top grants, generate drafts, then export a PDF packet.</p>
+    <p>Review your top-matched grants below, then read the AI-generated proposal draft.</p>
 </section>
 
 <section class="run-panel">
     <div class="run-top">
-        <button class="btn btn-primary" type="button" data-run-agents>Run agents</button>
-        <button class="btn btn-secondary" type="button" data-placeholder>Download PDF</button>
+        <a class="btn btn-secondary" href="{{ url_for('setup') }}">← New Search</a>
+        <button class="btn btn-secondary" type="button" onclick="window.print()">Download / Print</button>
     </div>
-    <div class="status-wrap" data-status-wrap>
-        <div class="status-track">
-            <span data-status-fill></span>
-        </div>
-        <div class="status-steps">
-            <span data-step>Researching live grants</span>
-            <span data-step>Scoring eligibility fit</span>
-            <span data-step>Ranking shortlist</span>
-            <span data-step>Drafting proposal pack</span>
-        </div>
-        <p class="status-text" data-status-text>Ready to run.</p>
-    </div>
+    {% if query %}
+    <p class="status-text">Showing results for: <strong>{{ query }}</strong></p>
+    {% endif %}
 </section>
 
-<section class="result-metrics" data-result-metrics hidden>
-    {% for metric in result_metrics %}
-        <article class="metric">
-            <span>{{ metric.label }}</span>
-            <strong>{{ metric.value }}</strong>
-        </article>
-    {% endfor %}
-</section>
-
-<section class="grants" data-grants hidden>
+{# ── Grant cards ── #}
+<section class="grants">
+    {% if grants %}
     {% for grant in grants %}
-        <article class="grant-card">
-            <div class="grant-row">
-                <strong>{{ grant.name }}</strong>
-                <span class="pill">{{ grant.fit }}% fit</span>
-            </div>
-            <p>{{ grant.sponsor }}</p>
-            <div class="grant-row">
-                <small>{{ grant.amount }} | Deadline {{ grant.deadline }}</small>
-                <small>{{ grant.type }}</small>
-            </div>
-            <div class="fit-meter">
-                <span style="width: {{ grant.fit }}%"></span>
-            </div>
-            <button class="btn btn-small" type="button" data-placeholder>Generate Draft</button>
-        </article>
+    <article class="grant-card">
+        <div class="grant-row">
+            <strong>{{ grant.name | default("Unnamed Grant") }}</strong>
+            <span class="pill">{{ grant.score | default(0) }}% fit</span>
+        </div>
+        <div class="grant-row">
+            <small>{{ grant.amount | default("Amount varies") }}</small>
+            <small>Deadline: {{ grant.deadline | default("Check website") }}</small>
+        </div>
+        {% if grant.description %}
+        <p class="grant-desc">{{ grant.description[:300] }}{% if grant.description | length > 300 %}…{% endif %}</p>
+        {% endif %}
+        {% if grant.url %}
+        <a class="grant-link" href="{{ grant.url }}" target="_blank" rel="noopener noreferrer">Visit grant page →</a>
+        {% endif %}
+        <div class="fit-meter">
+            <span style="width: {{ [grant.score | default(0), 100] | min }}%"></span>
+        </div>
+    </article>
     {% endfor %}
+    {% else %}
+    <p class="empty-state">No grants found. <a href="{{ url_for('setup') }}">Try a different search.</a></p>
+    {% endif %}
 </section>
+
+{# ── Proposal — rendered markdown ── #}
+<section class="proposal-output">
+    <h2>Generated Proposal</h2>
+
+    {% if proposal %}
+    <div id="proposal-raw" style="display:none">{{ proposal }}</div>
+    <div class="proposal-box" id="proposal-rendered"></div>
+    <button class="btn btn-secondary btn-small" onclick="copyProposal()" id="copy-btn" style="margin-top:12px">
+        📋 Copy Proposal
+    </button>
+    {% else %}
+    <div class="proposal-box">
+        <p class="empty-state">No proposal generated. Check your GEMINI_API_KEY in .env</p>
+    </div>
+    {% endif %}
+</section>
+
+{# marked.js converts ## headings / **bold** to real HTML #}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var raw = document.getElementById('proposal-raw');
+        var box = document.getElementById('proposal-rendered');
+        if (!raw || !box) return;
+        marked.setOptions({ breaks: true, gfm: true });
+        box.innerHTML = marked.parse(raw.textContent || '');
+    });
+
+    function copyProposal() {
+        var raw = document.getElementById('proposal-raw');
+        if (!raw) return;
+        navigator.clipboard.writeText(raw.textContent || '').then(function () {
+            var btn = document.getElementById('copy-btn');
+            btn.textContent = '✅ Copied!';
+            setTimeout(function () { btn.textContent = '📋 Copy Proposal'; }, 2000);
+        });
+    }
+</script>
+
+{# Proposal box styling #}
+<style>
+    .proposal-box {
+        background: var(--paper);
+        border: 3px solid var(--ink);
+        border-radius: var(--radius);
+        padding: 2rem 2.5rem;
+        box-shadow: var(--shadow);
+        font-family: "Georgia", serif;
+        line-height: 1.8;
+        color: var(--ink);
+        margin-top: 12px;
+    }
+
+    .proposal-box h1,
+    .proposal-box h2 {
+        font-family: "Archivo Black", sans-serif;
+        margin: 1.8rem 0 0.5rem;
+        padding-bottom: 6px;
+        border-bottom: 2px solid var(--yellow);
+    }
+
+    .proposal-box h1 {
+        font-size: 1.4rem;
+        margin-top: 0;
+    }
+
+    .proposal-box h2 {
+        font-size: 1rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .proposal-box h3 {
+        font-family: "Space Grotesk", sans-serif;
+        font-size: 0.97rem;
+        font-weight: 700;
+        margin: 1.2rem 0 0.3rem;
+    }
+
+    .proposal-box p {
+        margin: 0.7rem 0;
+        font-size: 0.95rem;
+    }
+
+    .proposal-box ul,
+    .proposal-box ol {
+        margin: 0.7rem 0 0.7rem 1.5rem;
+    }
+
+    .proposal-box li {
+        margin-bottom: 0.35rem;
+        font-size: 0.95rem;
+    }
+
+    .proposal-box strong {
+        font-weight: 700;
+    }
+
+    .proposal-box hr {
+        border: none;
+        border-top: 2px dashed #ddd;
+        margin: 1.5rem 0;
+    }
+
+    .grant-desc {
+        font-size: 0.82rem;
+        color: #555;
+        line-height: 1.5;
+        margin: 0;
+    }
+
+    .grant-link {
+        font-size: 0.82rem;
+        font-weight: 700;
+        text-decoration: underline;
+        text-decoration-color: var(--teal);
+        text-underline-offset: 3px;
+    }
+
+    .empty-state {
+        font-weight: 700;
+        color: #666;
+    }
+</style>
+
 {% endblock %}

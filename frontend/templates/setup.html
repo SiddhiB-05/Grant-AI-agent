@@ -4,30 +4,39 @@
 
 {% block content %}
 <section class="page-head">
-    <p class="eyebrow">Setup</p>
+    <p class="eyebrow">New Search</p>
     <h1>Tell us about your project.</h1>
-    <p>Fill this once. The backend can plug in later.</p>
+    <p>We'll find matching grants, score eligibility, and draft your proposal automatically.</p>
 </section>
 
-<section class="setup-layout">
-    <form class="setup-form" action="{{ url_for('results') }}" method="get">
+<section class="setup-section">
+    <form class="setup-form" method="POST" action="{{ url_for('setup') }}">
+
         <label>
             Project domain
-            <input type="text" placeholder="Water access, climate, health, education">
+            <input type="text" name="domain" placeholder="Water access, climate, health, education" required>
         </label>
+
         <label>
             Budget
-            <input type="text" placeholder="INR 5 lakh to INR 25 lakh">
+            <input type="text" name="budget" placeholder="INR 5 lakh to INR 25 lakh">
         </label>
+
         <label>
             Location
-            <input type="text" placeholder="Rajasthan, India">
+            <input type="text" name="location" placeholder="Rajasthan, India">
         </label>
+
         <label>
             Goals
-            <textarea rows="6" placeholder="Who you serve, what problem you solve, and what impact you expect."></textarea>
+            <textarea rows="6" name="goals"
+                placeholder="Who you serve, what problem you solve, and what impact you expect." required></textarea>
         </label>
-        <button class="btn btn-primary" type="submit">Find Grants</button>
+
+        <button class="btn btn-primary" type="submit">
+            Find Grants
+        </button>
+
     </form>
 </section>
 {% endblock %}
