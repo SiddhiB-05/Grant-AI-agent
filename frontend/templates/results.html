@@ -1,175 +1,710 @@
 {% extends "base.html" %}
 
-{% block title %}Results | AI Grant Assistant{% endblock %}
+{% block title %}Results | GrantAI{% endblock %}
 
 {% block content %}
 <section class="page-head">
-    <p class="eyebrow">Results</p>
-    <h1>Ranked opportunities and proposal drafts.</h1>
-    <p>Review your top-matched grants below, then read the AI-generated proposal draft.</p>
+    <p class="eyebrow">Results & Analysis</p>
+    <h1>Your matched grant opportunities and proposal draft</h1>
 </section>
 
-<section class="run-panel">
-    <div class="run-top">
-        <a class="btn btn-secondary" href="{{ url_for('setup') }}">← New Search</a>
-        <button class="btn btn-secondary" type="button" onclick="window.print()">Download / Print</button>
+<!-- Project Summary -->
+<section class="project-summary">
+    <div class="summary-card">
+        <div class="summary-badge">Project Overview</div>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <span class="label">Organization</span>
+                <span class="value">{{ org_name or "N/A" }}</span>
+            </div>
+            <div class="summary-item">
+                <span class="label">Focus Area</span>
+                <span class="value">{{ domain or "N/A" }}</span>
+            </div>
+        </div>
     </div>
-    {% if query %}
-    <p class="status-text">Showing results for: <strong>{{ query }}</strong></p>
-    {% endif %}
 </section>
 
-{# ── Grant cards ── #}
-<section class="grants">
+<!-- Performance Metrics -->
+{% if metrics %}
+<section class="metrics-dashboard">
+    <div class="metrics-header">
+        <h3>Search Performance</h3>
+    </div>
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-icon">⚡</div>
+            <div class="metric-content">
+                <span class="metric-label">Processing Time</span>
+                <span class="metric-value">{{ (metrics.total_ms / 1000) | round(1) }}s</span>
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-icon">🎯</div>
+            <div class="metric-content">
+                <span class="metric-label">Opportunities Found</span>
+                <span class="metric-value">{{ metrics.grants_found | default(0) }}</span>
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-icon">📊</div>
+            <div class="metric-content">
+                <span class="metric-label">Best Fit Score</span>
+                <span class="metric-value">{{ metrics.top_fit_score | default(0) }}%</span>
+            </div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-icon">📝</div>
+            <div class="metric-content">
+                <span class="metric-label">Proposal Length</span>
+                <span class="metric-value">{{ metrics.proposal_words | default(0) }} words</span>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<!-- Grants Section -->
+<section class="grants-section">
+    <div class="section-header">
+        <div class="header-content">
+            <h2>Ranked Grant Opportunities</h2>
+            <p class="section-desc">{{ grants | length }} opportunities ranked by fit. Review details and visit grant
+                websites to apply.</p>
+        </div>
+        <div class="section-actions">
+            {% if grants %}
+            <a class="btn btn-primary btn-icon" href="{{ url_for('download_grants_pdf') }}"
+                title="Download all opportunities as PDF">
+                <span>📥 Opportunities PDF</span>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
     {% if grants %}
-    {% for grant in grants %}
-    <article class="grant-card">
-        <div class="grant-row">
-            <strong>{{ grant.name | default("Unnamed Grant") }}</strong>
-            <span class="pill">{{ grant.score | default(0) }}% fit</span>
-        </div>
-        <div class="grant-row">
-            <small>{{ grant.amount | default("Amount varies") }}</small>
-            <small>Deadline: {{ grant.deadline | default("Check website") }}</small>
-        </div>
-        {% if grant.description %}
-        <p class="grant-desc">{{ grant.description[:300] }}{% if grant.description | length > 300 %}…{% endif %}</p>
-        {% endif %}
-        {% if grant.url %}
-        <a class="grant-link" href="{{ grant.url }}" target="_blank" rel="noopener noreferrer">Visit grant page →</a>
-        {% endif %}
-        <div class="fit-meter">
-            <span style="width: {{ [grant.score | default(0), 100] | min }}%"></span>
-        </div>
-    </article>
-    {% endfor %}
-    {% else %}
-    <p class="empty-state">No grants found. <a href="{{ url_for('setup') }}">Try a different search.</a></p>
-    {% endif %}
-</section>
+    <div class="grants-container">
+        {% for grant in grants %}
+        <article class="grant-card">
+            <div class="grant-header">
+                <div class="grant-title-group">
+                    <h3 class="grant-title">{{ grant.name | default("Unnamed Grant") }}</h3>
+                    <span class="fit-badge" data-score="{{ grant.score | default(0) }}">
+                        {{ grant.score | default(0) }}% Fit
+                    </span>
+                </div>
+                <div class="fit-indicator">
+                    <div class="fit-bar">
+                        <div class="fit-fill" style="width: {{ [grant.score | default(0), 100] | min }}%"></div>
+                    </div>
+                </div>
+            </div>
 
-{# ── Proposal — rendered markdown ── #}
-<section class="proposal-output">
-    <h2>Generated Proposal</h2>
+            <div class="grant-meta">
+                {% if grant.amount %}
+                <div class="meta-item">
+                    <span class="meta-icon">💰</span>
+                    <span class="meta-text">{{ grant.amount }}</span>
+                </div>
+                {% endif %}
+                {% if grant.deadline %}
+                <div class="meta-item">
+                    <span class="meta-icon">📅</span>
+                    <span class="meta-text">Deadline: {{ grant.deadline }}</span>
+                </div>
+                {% endif %}
+            </div>
 
-    {% if proposal %}
-    <div id="proposal-raw" style="display:none">{{ proposal }}</div>
-    <div class="proposal-box" id="proposal-rendered"></div>
-    <button class="btn btn-secondary btn-small" onclick="copyProposal()" id="copy-btn" style="margin-top:12px">
-        📋 Copy Proposal
-    </button>
+            {% if grant.description %}
+            <p class="grant-description">
+                {{ grant.description[:250] }}{% if grant.description | length > 250 %}…{% endif %}
+            </p>
+            {% endif %}
+
+            {% if grant.url %}
+            <a class="grant-action-link" href="{{ grant.url }}" target="_blank" rel="noopener noreferrer">
+                Visit funder website →
+            </a>
+            {% endif %}
+        </article>
+        {% endfor %}
+    </div>
     {% else %}
-    <div class="proposal-box">
-        <p class="empty-state">No proposal generated. Check your GEMINI_API_KEY in .env</p>
+    <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p>No grants found matching your criteria.</p>
+        <a class="btn btn-secondary" href="{{ url_for('setup') }}">Try a different search</a>
     </div>
     {% endif %}
 </section>
 
-{# marked.js converts ## headings / **bold** to real HTML #}
+<!-- Proposal Section -->
+<section class="proposal-section">
+    <div class="section-header">
+        <div class="header-content">
+            <h2>Your Generated Proposal</h2>
+            <p class="section-desc">AI-drafted concept note (~300–400 words). Review, edit, and customize before
+                submitting to funders.</p>
+        </div>
+        <div class="section-actions">
+            {% if has_proposal %}
+            <div class="action-group">
+                <a class="btn btn-primary btn-icon" href="{{ url_for('download_pdf') }}"
+                    title="Download proposal as PDF">
+                    <span>📄 Proposal PDF</span>
+                </a>
+                <button class="btn btn-secondary btn-icon" type="button" onclick="copyProposal()" id="copy-btn"
+                    title="Copy proposal text">
+                    <span>📋 Copy Text</span>
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if has_proposal %}
+    <script type="application/json" id="proposal-data">{{ proposal | tojson }}</script>
+    <div class="proposal-box" id="proposal-rendered"></div>
+    {% else %}
+    <div class="proposal-box empty-proposal">
+        <div class="empty-icon">⚠️</div>
+        <p>{{ proposal or "No proposal generated. Check GEMINI_API_KEY in .env" }}</p>
+    </div>
+    {% endif %}
+</section>
+
+<!-- Navigation -->
+<section class="results-nav">
+    <a class="btn btn-secondary btn-large" href="{{ url_for('setup') }}">← Start New Search</a>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        var raw = document.getElementById('proposal-raw');
-        var box = document.getElementById('proposal-rendered');
-        if (!raw || !box) return;
+    function getProposalText() {
+        var el = document.getElementById("proposal-data");
+        if (!el) return "";
+        try { return JSON.parse(el.textContent || '""'); }
+        catch (e) { return el.textContent || ""; }
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+        var box = document.getElementById("proposal-rendered");
+        if (!box) return;
+        var text = getProposalText();
+        if (!text) return;
         marked.setOptions({ breaks: true, gfm: true });
-        box.innerHTML = marked.parse(raw.textContent || '');
+        box.innerHTML = marked.parse(text);
     });
 
     function copyProposal() {
-        var raw = document.getElementById('proposal-raw');
-        if (!raw) return;
-        navigator.clipboard.writeText(raw.textContent || '').then(function () {
-            var btn = document.getElementById('copy-btn');
-            btn.textContent = '✅ Copied!';
-            setTimeout(function () { btn.textContent = '📋 Copy Proposal'; }, 2000);
+        var text = getProposalText();
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(function () {
+            var btn = document.getElementById("copy-btn");
+            var originalText = btn.textContent;
+            btn.textContent = "✓ Copied!";
+            btn.classList.add("copied");
+            setTimeout(function () {
+                btn.textContent = originalText;
+                btn.classList.remove("copied");
+            }, 2000);
+        }).catch(function () {
+            alert("Failed to copy. Please try again.");
         });
     }
 </script>
 
-{# Proposal box styling #}
 <style>
-    .proposal-box {
-        background: var(--paper);
-        border: 3px solid var(--ink);
+    :root {
+        --primary: #1f172a;
+        --accent: #0891b2;
+        --success: #22c55e;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --light: #f8fafc;
+        --border: #e2e8f0;
+        --text: #1e293b;
+        --text-light: #64748b;
+    }
+
+    .page-head {
+        text-align: center;
+        padding: 3rem 1rem;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.05) 0%, rgba(8, 145, 178, 0.05) 100%);
         border-radius: var(--radius);
-        padding: 2rem 2.5rem;
-        box-shadow: var(--shadow);
-        font-family: "Georgia", serif;
+        margin-bottom: 2rem;
+    }
+
+    .page-head h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0.5rem 0;
+        color: var(--text);
+    }
+
+    /* Project Summary */
+    .project-summary {
+        margin-bottom: 2.5rem;
+    }
+
+    .summary-card {
+        background: white;
+        border: 2px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .summary-badge {
+        display: inline-block;
+        font-size: 0.75rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--accent);
+        margin-bottom: 1rem;
+        padding: 0.35rem 0.75rem;
+        background: rgba(8, 145, 178, 0.1);
+        border-radius: 0.25rem;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+    }
+
+    .summary-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .summary-item .label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-light);
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .summary-item .value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--text);
+    }
+
+    @media (max-width: 768px) {
+        .summary-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* Metrics Dashboard */
+    .metrics-dashboard {
+        background: white;
+        border: 2px solid var(--border);
+        border-radius: var(--radius);
+        padding: 2rem;
+        margin-bottom: 2.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .metrics-header {
+        margin-bottom: 1.5rem;
+    }
+
+    .metrics-header h3 {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--text);
+        margin: 0;
+    }
+
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .metric-card {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1.25rem;
+        background: linear-gradient(135deg, rgba(8, 145, 178, 0.05) 0%, rgba(34, 197, 94, 0.05) 100%);
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .metric-card:hover {
+        border-color: var(--accent);
+        box-shadow: 0 4px 12px rgba(8, 145, 178, 0.1);
+    }
+
+    .metric-icon {
+        font-size: 1.75rem;
+    }
+
+    .metric-content {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .metric-label {
+        font-size: 0.8rem;
+        color: var(--text-light);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    .metric-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text);
+    }
+
+    /* Sections */
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 2rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+    }
+
+    .header-content h2 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--text);
+        margin: 0 0 0.5rem;
+    }
+
+    .section-desc {
+        font-size: 0.95rem;
+        color: var(--text-light);
+        margin: 0;
+    }
+
+    .section-actions {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .action-group {
+        display: flex;
+        gap: 1rem;
+    }
+
+    /* Grants Container */
+    .grants-section {
+        margin-bottom: 3rem;
+    }
+
+    .grants-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .grant-card {
+        background: white;
+        border: 2px solid var(--border);
+        border-radius: var(--radius);
+        padding: 1.5rem;
+        transition: all 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .grant-card:hover {
+        border-color: var(--accent);
+        box-shadow: 0 8px 24px rgba(8, 145, 178, 0.15);
+        transform: translateY(-2px);
+    }
+
+    .grant-header {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .grant-title-group {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .grant-title {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--text);
+        margin: 0;
+        flex: 1;
+        line-height: 1.4;
+    }
+
+    .fit-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.4rem 0.8rem;
+        background: var(--accent);
+        color: white;
+        font-size: 0.8rem;
+        font-weight: 700;
+        border-radius: 0.25rem;
+        white-space: nowrap;
+        min-width: fit-content;
+    }
+
+    .fit-badge[data-score="100"],
+    .fit-badge[data-score^="9"] {
+        background: var(--success);
+    }
+
+    .fit-badge[data-score^="8"],
+    .fit-badge[data-score^="7"] {
+        background: var(--accent);
+    }
+
+    .fit-badge[data-score^="6"],
+    .fit-badge[data-score^="5"] {
+        background: var(--warning);
+    }
+
+    .fit-indicator {
+        width: 100%;
+    }
+
+    .fit-bar {
+        width: 100%;
+        height: 6px;
+        background: var(--border);
+        border-radius: 3px;
+        overflow: hidden;
+    }
+
+    .fit-fill {
+        height: 100%;
+        background: linear-gradient(90deg, var(--accent), var(--success));
+        transition: width 0.3s ease;
+    }
+
+    .grant-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: var(--text-light);
+    }
+
+    .meta-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .meta-icon {
+        font-size: 1rem;
+    }
+
+    .grant-description {
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: var(--text);
+        margin: 0;
+    }
+
+    .grant-action-link {
+        align-self: flex-start;
+        margin-top: auto;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--accent);
+        text-decoration: none;
+        padding-bottom: 0.25rem;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s ease;
+    }
+
+    .grant-action-link:hover {
+        border-bottom-color: var(--accent);
+    }
+
+    /* Proposal Section */
+    .proposal-section {
+        background: white;
+        border: 2px solid var(--border);
+        border-radius: var(--radius);
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .proposal-box {
+        background: linear-gradient(135deg, #fafafa 0%, #f3f4f6 100%);
+        border: 1px solid var(--border);
+        border-radius: 0.5rem;
+        padding: 2rem;
+        margin-top: 1.5rem;
+        font-family: 'Georgia', serif;
         line-height: 1.8;
-        color: var(--ink);
-        margin-top: 12px;
+        color: var(--text);
     }
 
     .proposal-box h1,
-    .proposal-box h2 {
-        font-family: "Archivo Black", sans-serif;
-        margin: 1.8rem 0 0.5rem;
-        padding-bottom: 6px;
-        border-bottom: 2px solid var(--yellow);
-    }
-
-    .proposal-box h1 {
-        font-size: 1.4rem;
-        margin-top: 0;
-    }
-
-    .proposal-box h2 {
-        font-size: 1rem;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
+    .proposal-box h2,
     .proposal-box h3 {
-        font-family: "Space Grotesk", sans-serif;
-        font-size: 0.97rem;
+        font-family: 'Space Grotesk', sans-serif;
+        color: var(--primary);
+        margin: 1.5rem 0 0.75rem;
         font-weight: 700;
-        margin: 1.2rem 0 0.3rem;
+    }
+
+    .proposal-box h2 {
+        font-size: 1.1rem;
+        border-bottom: 3px solid var(--accent);
+        padding-bottom: 0.5rem;
     }
 
     .proposal-box p {
-        margin: 0.7rem 0;
-        font-size: 0.95rem;
+        margin: 0.75rem 0;
     }
 
     .proposal-box ul,
     .proposal-box ol {
-        margin: 0.7rem 0 0.7rem 1.5rem;
+        margin: 0.75rem 0 0.75rem 1.5rem;
     }
 
     .proposal-box li {
-        margin-bottom: 0.35rem;
-        font-size: 0.95rem;
+        margin-bottom: 0.5rem;
     }
 
-    .proposal-box strong {
-        font-weight: 700;
+    .empty-proposal {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 200px;
+        gap: 1rem;
     }
 
-    .proposal-box hr {
-        border: none;
-        border-top: 2px dashed #ddd;
-        margin: 1.5rem 0;
-    }
-
-    .grant-desc {
-        font-size: 0.82rem;
-        color: #555;
-        line-height: 1.5;
-        margin: 0;
-    }
-
-    .grant-link {
-        font-size: 0.82rem;
-        font-weight: 700;
-        text-decoration: underline;
-        text-decoration-color: var(--teal);
-        text-underline-offset: 3px;
+    .empty-proposal .empty-icon {
+        font-size: 2.5rem;
     }
 
     .empty-state {
-        font-weight: 700;
-        color: #666;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 2rem;
+        text-align: center;
+        background: var(--light);
+        border: 2px dashed var(--border);
+        border-radius: var(--radius);
+    }
+
+    .empty-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state p {
+        font-size: 1.1rem;
+        color: var(--text-light);
+        margin: 0;
+    }
+
+    /* Buttons */
+    .btn-icon {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .btn-icon span {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn-large {
+        font-size: 1rem;
+        padding: 0.75rem 1.5rem;
+    }
+
+    .btn.copied {
+        background-color: var(--success);
+    }
+
+    /* Results Nav */
+    .results-nav {
+        padding: 2rem 0;
+        text-align: center;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .section-header {
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .section-actions {
+            width: 100%;
+        }
+
+        .action-group {
+            width: 100%;
+        }
+
+        .action-group .btn {
+            flex: 1;
+        }
+
+        .grants-container {
+            grid-template-columns: 1fr;
+        }
+
+        .grant-title-group {
+            flex-direction: column;
+        }
+
+        .fit-badge {
+            align-self: flex-start;
+        }
+
+        .page-head h1 {
+            font-size: 1.5rem;
+        }
+
+        .metrics-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .metrics-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .proposal-box {
+            padding: 1.25rem;
+        }
     }
 </style>
 
