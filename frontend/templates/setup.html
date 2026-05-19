@@ -1,20 +1,28 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
-{% block title %}Setup | AI Grant Assistant{% endblock %}
+{% block title %}Setup | GrantAI{% endblock %}
 
 {% block content %}
 <section class="page-head">
     <p class="eyebrow">New Search</p>
     <h1>Tell us about your project.</h1>
-    <p>We'll find matching grants, score eligibility, and draft your proposal automatically.</p>
+    <p>We&apos;ll find matching grants, score fit, and generate a short concept note (~300â€“400 words) as a PDF.</p>
 </section>
 
 <section class="setup-section">
-    <form class="setup-form" method="POST" action="{{ url_for('setup') }}">
+    <form class="setup-form" method="POST" action="{{ url_for('setup') }}" data-pipeline-form>
+        {% if error %}
+        <p class="form-error" role="alert">{{ error }}</p>
+        {% endif %}
 
         <label>
             Project domain
             <input type="text" name="domain" placeholder="Water access, climate, health, education" required>
+        </label>
+
+        <label>
+            Organization name
+            <input type="text" name="org_name" placeholder="Your nonprofit, startup, school, or team">
         </label>
 
         <label>
@@ -33,10 +41,22 @@
                 placeholder="Who you serve, what problem you solve, and what impact you expect." required></textarea>
         </label>
 
-        <button class="btn btn-primary" type="submit">
-            Find Grants
+        <button class="btn btn-primary" type="submit" data-submit-btn>
+            Find grants &amp; generate PDF
         </button>
-
     </form>
 </section>
+
+<div class="pipeline-overlay" id="pipeline-overlay" hidden aria-live="polite">
+    <div class="pipeline-modal">
+        <p class="eyebrow">Running pipeline</p>
+        <h2>Searching, ranking, drafting&hellip;</h2>
+        <div class="status-wrap">
+            <div class="status-track" aria-hidden="true">
+                <span id="pipeline-progress"></span>
+            </div>
+            <p class="status-text" id="pipeline-status">Starting grant search&hellip;</p>
+        </div>
+    </div>
+</div>
 {% endblock %}

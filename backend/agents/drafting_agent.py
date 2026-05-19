@@ -1,143 +1,237 @@
+import os
+import re
+
 import requests
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
-# Step 1: Try to auto-discover working models from YOUR API key
-# Step 2: Fall back to this hardcoded list (confirmed working May 2026)
-FALLBACK_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-]
+FALLBACK_MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.5-flash"]
+DRAFTING_PREFER = ["gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.5-flash"]
+DRAFTING_SKIP = ("lite", "image", "preview", "thinking", "exp")
+
+MAX_WORDS = 650
+TARGET_WORDS = "300-400"
+MAX_PROPOSAL_CHARS = 3200
 
 BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
 LIST_URL = "https://generativelanguage.googleapis.com/v1beta/models?key={key}"
 
 
+def _result(text, model=None, truncated=False):
+    return {"text": text, "model": model, "truncated": truncated}
+
+
+def _enforce_word_limit(text: str) -> tuple[str, bool]:
+    if not text:
+        return text, False
+    text = re.sub(r"[ \t]{6,}", " ", text)
+    text = re.sub(r"\n{4,}", "\n\n", text)
+    words = text.split()
+    if len(words) <= MAX_WORDS:
+        return text.strip(), False
+    trimmed = " ".join(words[:MAX_WORDS]).strip()
+    if not trimmed.endswith("."):
+        trimmed += "..."
+    return trimmed, True
+
+
+def _clean_proposal(text: str) -> tuple[str, bool]:
+    """Clean and validate proposal text, removing artifacts and enforcing limits."""
+    if not text:
+        return text, False
+    
+    # Remove API artifacts
+    text = re.sub(r"\*Generation hit the token limit.*", "", text, flags=re.I)
+    text = re.sub(r"\*Output trimmed.*", "", text, flags=re.I)
+    text = re.sub(r"---\s*\n\*[^*]+\*", "", text)
+    
+    # Remove leading/trailing whitespace
+    text = text.strip()
+    
+    # Character limit (safety)
+    if len(text) > MAX_PROPOSAL_CHARS:
+        text = text[:MAX_PROPOSAL_CHARS].rsplit(" ", 1)[0] + "..."
+    
+    # Word limit enforcement
+    text, truncated = _enforce_word_limit(text)
+    
+    # Ensure we have actual content
+    if not text or len(text.strip()) < 50:
+        return "", True
+    
+    return text, truncated
+
+
+def _models_for_drafting(available):
+    pool = [m for m in available if not any(s in m.lower() for s in DRAFTING_SKIP)]
+    ordered = [m for m in DRAFTING_PREFER if m in pool]
+    for model in pool:
+        if model not in ordered:
+            ordered.append(model)
+    return ordered or list(FALLBACK_MODELS)
+
+
 def _get_available_models():
-    """
-    Fetch the list of models available for THIS API key from Google.
-    Returns a list of model IDs that support generateContent, best ones first.
-    """
     try:
-        r = requests.get(LIST_URL.format(key=API_KEY), timeout=10)
-        data = r.json()
+        response = requests.get(LIST_URL.format(key=API_KEY), timeout=10)
+        data = response.json()
         models = []
-        for m in data.get("models", []):
-            name = m.get("name", "")          # e.g. "models/gemini-2.0-flash"
-            actions = m.get("supportedGenerationMethods", [])
-            if "generateContent" in actions:
-                model_id = name.replace("models/", "")
-                models.append(model_id)
-
-        # Prefer flash models — sort: 2.5 first, then 2.0, then others
-        def rank(m):
-            if "2.5-flash" in m and "preview" not in m: return 0
-            if "2.0-flash" in m and "lite" not in m and "preview" not in m: return 1
-            if "2.0-flash-lite" in m: return 2
-            if "flash" in m and "preview" not in m: return 3
-            if "preview" in m: return 9
-            return 5
-
-        models.sort(key=rank)
-        print(f"[drafting_agent] Available models: {models[:5]}")
-        return models if models else FALLBACK_MODELS
-
+        for model in data.get("models", []):
+            name = model.get("name", "")
+            if "generateContent" in model.get("supportedGenerationMethods", []):
+                models.append(name.replace("models/", ""))
+        return _models_for_drafting(models)
     except Exception as e:
-        print(f"[drafting_agent] Could not list models: {e} — using fallback list")
+        print(f"[drafting_agent] Model list failed: {e}")
         return FALLBACK_MODELS
 
 
+def _extract_text(candidate):
+    parts = candidate.get("content", {}).get("parts", [])
+    return "".join(p.get("text", "") for p in parts if p.get("text") and not p.get("thought"))
+
+
 def _call(model, prompt):
+    """Call Gemini API with proper error handling."""
     url = BASE_URL.format(model=model, key=API_KEY)
     payload = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 2048}
+        "generationConfig": {
+            "temperature": 0.35,
+            "maxOutputTokens": 2048,  # Increased to allow full proposal generation
+        },
     }
-    r = requests.post(
-        url,
-        json=payload,
-        headers={"Content-Type": "application/json"},
-        timeout=30
-    )
-    return r.json()
+    
+    try:
+        response = requests.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=90
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError as e:
+        print(f"[drafting_agent] HTTP Error calling {model}: {e.response.status_code} - {e.response.text[:200]}")
+        return {"error": {"message": f"HTTP {e.response.status_code}: {e.response.reason}"}}
+    except Exception as e:
+        print(f"[drafting_agent] Error calling {model}: {str(e)}")
+        raise
 
 
-def generate_proposal(user_query, top_grants=None):
+def generate_proposal(user_query, top_grants=None, org_name=None):
+    """Generate a professional grant proposal using Gemini API."""
     if not API_KEY:
-        return "Error: GEMINI_API_KEY is not set in your .env file."
+        error_msg = "Error: GEMINI_API_KEY is not set in your .env file."
+        print(f"[drafting_agent] {error_msg}")
+        return _result(error_msg)
 
-    # Build grants context
     grants_context = ""
     if top_grants:
-        top3 = top_grants[:3]
-        grants_context = "\n\nTop matched grant opportunities:\n"
-        for i, g in enumerate(top3, 1):
-            grants_context += (
-                f"{i}. {g.get('name', 'N/A')} "
-                f"(Fit: {g.get('score', 0)}%) — {g.get('description', '')[:200]}\n"
-            )
+        grants_context = "\nRelevant funding sources (reference briefly if useful):\n"
+        for i, grant in enumerate(top_grants[:2], 1):
+            grants_context += f"- {grant.get('name', 'N/A')}\n"
 
-    prompt = f"""You are an expert grant writer. Write a detailed professional grant proposal.
+    org_line = f"Organization: {org_name}\n" if org_name else ""
 
-Project Description:
+    prompt = f"""Write a professional grant concept note for an Indian NGO.
+
+{org_line}Project:
 {user_query}
 {grants_context}
 
-Include these sections:
-1. Executive Summary
-2. Problem Statement
-3. Project Goals and Objectives
-4. Methodology / Implementation Plan
-5. Expected Outcomes and Impact
-6. Budget Overview
-7. Organization Background
-8. Conclusion
+STRICT RULES:
+- Total length: {TARGET_WORDS} words ONLY (never exceed {MAX_WORDS} words).
+- Plain professional English. No filler, no repetition, no markdown tables.
+- Use exactly these section headings on their own line:
 
-Use formal, compelling language with measurable outcomes."""
+PROJECT TITLE
+EXECUTIVE SUMMARY
+PROBLEM & NEED
+APPROACH & ACTIVITIES
+EXPECTED IMPACT
+BUDGET SUMMARY
+CONCLUSION
 
-    # Get models available for this API key, then try each one
+Keep each section short (2-4 sentences or 3-5 bullets for Approach).
+Stop immediately after CONCLUSION."""
+
     models_to_try = _get_available_models()
     last_error = ""
 
-    for model in models_to_try[:5]:   # try up to 5 models max
+    for model in models_to_try[:4]:
         try:
-            print(f"[drafting_agent] Trying: {model}")
+            print(f"[drafting_agent] Trying model: {model}")
             result = _call(model, prompt)
 
+            # Check for API errors
             if "error" in result:
-                last_error = result["error"].get("message", "Unknown error")
-                print(f"[drafting_agent] {model} failed: {last_error[:80]}")
+                error_msg = result["error"].get("message", "Unknown error")
+                last_error = error_msg
+                print(f"[drafting_agent] API Error on {model}: {error_msg[:100]}")
                 continue
 
-            if "candidates" in result and result["candidates"]:
-                candidate = result["candidates"][0]
-                if candidate.get("finishReason") == "SAFETY":
-                    return "Blocked by Gemini safety filters. Try rephrasing your project description."
-                text = candidate["content"]["parts"][0]["text"]
-                print(f"[drafting_agent] Success with: {model}")
-                return text
+            candidates = result.get("candidates") or []
+            if not candidates:
+                last_error = f"No candidates returned from {model}"
+                print(f"[drafting_agent] {last_error}")
+                continue
 
-            last_error = f"Unexpected response from {model}"
+            candidate = candidates[0]
+            
+            # Check for safety filtering
+            if candidate.get("finishReason") == "SAFETY":
+                error_msg = "Blocked by safety filters. Try simpler project wording."
+                print(f"[drafting_agent] Safety filter triggered")
+                return _result(error_msg)
+
+            # Extract text from response
+            text = _extract_text(candidate)
+            if not text or not text.strip():
+                last_error = f"Empty text returned from {model}"
+                print(f"[drafting_agent] {last_error}")
+                continue
+
+            print(f"[drafting_agent] Raw text length: {len(text)} chars")
+            
+            # Clean and validate proposal
+            text, trimmed = _clean_proposal(text)
+            
+            if not text or len(text.strip()) < 100:
+                last_error = f"Proposal too short after cleaning ({len(text)} chars)"
+                print(f"[drafting_agent] {last_error}")
+                continue
+            
+            finish = candidate.get("finishReason", "")
+            truncated = trimmed or finish == "MAX_TOKENS"
+            word_count = len(text.split())
+            print(f"[drafting_agent] SUCCESS {model}: {word_count} words, finish={finish}, truncated={truncated}")
+            return _result(text, model=model, truncated=truncated)
 
         except requests.exceptions.Timeout:
-            last_error = f"Timeout on {model}"
+            last_error = f"Timeout on {model} (>90s)"
+            print(f"[drafting_agent] {last_error}")
+            continue
+        except requests.exceptions.ConnectionError as e:
+            last_error = f"Connection error: {str(e)[:50]}"
             print(f"[drafting_agent] {last_error}")
             continue
         except Exception as e:
-            last_error = str(e)
-            print(f"[drafting_agent] Exception on {model}: {last_error}")
+            last_error = f"Unexpected error: {str(e)[:100]}"
+            print(f"[drafting_agent] {last_error}")
             continue
 
-    return (
-        f"Could not generate proposal. All models failed.\n"
+    # All models failed - return helpful error
+    error_msg = (
+        "Could not generate proposal after trying all available models.\n\n"
         f"Last error: {last_error}\n\n"
-        f"Please check:\n"
-        f"1. Your GEMINI_API_KEY in .env is valid\n"
-        f"2. Quota not exceeded — visit https://aistudio.google.com\n"
-        f"3. Generative Language API is enabled in Google Cloud Console"
+        "Troubleshooting:\n"
+        "1. Verify GEMINI_API_KEY is set in .env\n"
+        "2. Check API quota at https://aistudio.google.com\n"
+        "3. Try with simpler project description"
     )
+    print(f"[drafting_agent] Final fallback: {error_msg[:100]}")
+    return _result(error_msg)

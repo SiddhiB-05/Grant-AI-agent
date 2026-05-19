@@ -1,23 +1,5 @@
 const navToggle = document.querySelector("[data-nav-toggle]");
 const siteNav = document.querySelector("[data-site-nav]");
-const toast = document.querySelector("[data-toast]");
-
-const runButton = document.querySelector("[data-run-agents]");
-const statusFill = document.querySelector("[data-status-fill]");
-const statusText = document.querySelector("[data-status-text]");
-const statusSteps = Array.from(document.querySelectorAll("[data-step]"));
-const metricsBlock = document.querySelector("[data-result-metrics]");
-const grantsBlock = document.querySelector("[data-grants]");
-
-function showToast(message = "Backend hook pending. UI placeholder only.") {
-    if (!toast) return;
-    toast.textContent = message;
-    toast.classList.add("is-visible");
-    window.clearTimeout(showToast.timer);
-    showToast.timer = window.setTimeout(() => {
-        toast.classList.remove("is-visible");
-    }, 2200);
-}
 
 if (navToggle && siteNav) {
     navToggle.addEventListener("click", () => {
@@ -25,59 +7,40 @@ if (navToggle && siteNav) {
     });
 }
 
-document.querySelectorAll("[data-placeholder]").forEach((element) => {
-    element.addEventListener("click", () => {
-        showToast();
-    });
-});
+const pipelineForm = document.querySelector("[data-pipeline-form]");
+const pipelineOverlay = document.getElementById("pipeline-overlay");
+const pipelineProgress = document.getElementById("pipeline-progress");
+const pipelineStatus = document.getElementById("pipeline-status");
 
-function updateProgress(stepIndex) {
-    const totalSteps = statusSteps.length;
-    const percent = Math.round(((stepIndex + 1) / totalSteps) * 100);
-    statusFill.style.width = `${percent}%`;
-    statusText.textContent = statusSteps[stepIndex].textContent;
+const PIPELINE_STAGES = [
+    { progress: 20, message: "Searching for grant opportunities…" },
+    { progress: 50, message: "Ranking fit to your project…" },
+    { progress: 80, message: "Writing concept note (300–400 words)…" },
+    { progress: 95, message: "Almost done…" },
+];
 
-    statusSteps.forEach((step, index) => {
-        step.classList.remove("is-active", "is-done");
-        if (index < stepIndex) step.classList.add("is-done");
-        if (index === stepIndex) step.classList.add("is-active");
-    });
+function startPipelineOverlay() {
+    if (!pipelineOverlay || !pipelineProgress) return;
+    pipelineOverlay.hidden = false;
+    document.body.style.overflow = "hidden";
+    let index = 0;
+    if (pipelineStatus) pipelineStatus.textContent = PIPELINE_STAGES[0].message;
+    pipelineProgress.style.width = "8%";
+    window.setInterval(() => {
+        if (index >= PIPELINE_STAGES.length) return;
+        const stage = PIPELINE_STAGES[index++];
+        pipelineProgress.style.width = `${stage.progress}%`;
+        if (pipelineStatus) pipelineStatus.textContent = stage.message;
+    }, 4500);
 }
 
-if (runButton && statusFill && statusText && statusSteps.length) {
-    let running = false;
-    runButton.addEventListener("click", () => {
-        if (running) return;
-        running = true;
-        runButton.disabled = true;
-        runButton.textContent = "Running...";
-
-        let currentStep = -1;
-        const timer = window.setInterval(() => {
-            currentStep += 1;
-            if (currentStep < statusSteps.length) {
-                updateProgress(currentStep);
-                return;
-            }
-
-            window.clearInterval(timer);
-            statusText.textContent = "Done. Ranked grants and draft actions are ready.";
-            statusSteps.forEach((step) => {
-                step.classList.remove("is-active");
-                step.classList.add("is-done");
-            });
-            runButton.textContent = "Run again";
-            runButton.disabled = false;
-            running = false;
-
-            if (metricsBlock) {
-                metricsBlock.hidden = false;
-                metricsBlock.classList.add("is-revealed");
-            }
-            if (grantsBlock) {
-                grantsBlock.hidden = false;
-                grantsBlock.classList.add("is-revealed");
-            }
-        }, 700);
+if (pipelineForm) {
+    pipelineForm.addEventListener("submit", () => {
+        const submitBtn = pipelineForm.querySelector("[data-submit-btn]");
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = "Running pipeline…";
+        }
+        startPipelineOverlay();
     });
 }
